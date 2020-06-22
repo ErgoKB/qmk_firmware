@@ -16,11 +16,41 @@
  * Modifications for QMK and STM32F303 by Yiancar
  */
 
-#include <hal.h>
+#if defined(EEPROM_EMU_STM32F303xC)
+#    define STM32F303xC
+#    include "stm32f3xx.h"
+#elif defined(EEPROM_EMU_STM32F103xB)
+#    define STM32F103xB
+#    include "stm32f1xx.h"
+#elif defined(EEPROM_EMU_STM32F072xB)
+#    define STM32F072xB
+#    include "stm32f0xx.h"
+#elif defined(EEPROM_EMU_STM32F042x6)
+#    define STM32F042x6
+#    include "stm32f0xx.h"
+#elif defined(EEPROM_EMU_STM32F401xC)
+#    define STM32F401xC
+#    include "stm32f4xx.h"
+#else
+#    error "not implemented."
+#endif
+
 #include "flash_stm32.h"
 
 #if defined(EEPROM_EMU_STM32F103xB)
 #    define FLASH_SR_WRPERR FLASH_SR_WRPRTERR
+#endif
+
+#if defined(EEPROM_EMU_STM32F401xC)
+#    define FLASH_PSIZE_HFWORD FLASH_CR_PSIZE_0
+#    define FLASH_PSIZE_WORD FLASH_CR_PSIZE_1
+#    define FLASH_CR_SNB_POS 3
+/* the flash key was not defined in the CMSIS used by current chibios */
+#    define FLASH_KEY1 0x45670123
+#    define FLASH_KEY2 0xCDEF89AB
+#    define FLASH_SR_FLAGS (FLASH_SR_PGAERR|FLASH_SR_PGPERR|FLASH_SR_PGSERR|FLASH_SR_WRPERR)
+#else
+#    define FLASH_SR_FLAGS (FLASH_SR_EOP | FLASH_SR_PGERR | FLASH_SR_WRPERR)
 #endif
 
 /* Delay definition */
@@ -28,6 +58,8 @@
 #define ProgramTimeout ((uint32_t)0x0000001F)
 
 #define ASSERT(exp) (void)((0))
+
+void FLASH_ClearFlag(uint32_t FLASH_FLAG);
 
 /**
  * @brief  Inserts a time delay.
@@ -49,11 +81,16 @@ static void delay(void) {
 FLASH_Status FLASH_GetStatus(void) {
     if ((FLASH->SR & FLASH_SR_BSY) == FLASH_SR_BSY) return FLASH_BUSY;
 
+#if defined(EEPROM_EMU_STM32F401xC)
+    if ((FLASH->SR & (FLASH_SR_PGSERR | FLASH_SR_PGPERR | FLASH_SR_PGAERR))) return FLASH_ERROR_PG;
+    if ((FLASH->SR & FLASH_SR_WRPERR)) return FLASH_ERROR_WRP;
+#else
     if ((FLASH->SR & FLASH_SR_PGERR) != 0) return FLASH_ERROR_PG;
 
     if ((FLASH->SR & FLASH_SR_WRPERR) != 0) return FLASH_ERROR_WRP;
 
     if ((FLASH->SR & FLASH_OBR_OPTERR) != 0) return FLASH_ERROR_OPT;
+#endif
 
     return FLASH_COMPLETE;
 }
@@ -86,26 +123,33 @@ FLASH_Status FLASH_WaitForLastOperation(uint32_t Timeout) {
  * @retval FLASH Status: The returned value can be: FLASH_BUSY, FLASH_ERROR_PG,
  *   FLASH_ERROR_WRP, FLASH_COMPLETE or FLASH_TIMEOUT.
  */
-FLASH_Status FLASH_ErasePage(uint32_t Page_Address) {
+FLASH_Status FLASH_ErasePage(uint32_t Page) {
     FLASH_Status status = FLASH_COMPLETE;
     /* Check the parameters */
-    ASSERT(IS_FLASH_ADDRESS(Page_Address));
+    //ASSERT(IS_FLASH_ADDRESS(Page_Address));
     /* Wait for last operation to be completed */
     status = FLASH_WaitForLastOperation(EraseTimeout);
 
     if (status == FLASH_COMPLETE) {
         /* if the previous operation is completed, proceed to erase the page */
+#if defined(EEPROM_EMU_STM32F401xC)
+        FLASH->CR &= ~FLASH_CR_SNB;
+        FLASH->CR |= FLASH_CR_SER | (Page << FLASH_CR_SNB_POS);
+#else
         FLASH->CR |= FLASH_CR_PER;
-        FLASH->AR = Page_Address;
+        FLASH->AR = Page;
+#endif
         FLASH->CR |= FLASH_CR_STRT;
 
         /* Wait for last operation to be completed */
         status = FLASH_WaitForLastOperation(EraseTimeout);
-        if (status != FLASH_TIMEOUT) {
-            /* if the erase operation is completed, disable the PER Bit */
-            FLASH->CR &= ~FLASH_CR_PER;
-        }
-        FLASH->SR = (FLASH_SR_EOP | FLASH_SR_PGERR | FLASH_SR_WRPERR);
+        /* clear the SER or PER Bit */
+#if defined(EEPROM_EMU_STM32F401xC)
+        FLASH->CR &= ~(FLASH_CR_SER | FLASH_CR_SNB);
+#else
+        FLASH->CR &= ~FLASH_CR_PER;
+#endif
+        FLASH_ClearFlag(FLASH_SR_FLAGS);
     }
     /* Return the Erase Status */
     return status;
@@ -121,21 +165,28 @@ FLASH_Status FLASH_ErasePage(uint32_t Page_Address) {
 FLASH_Status FLASH_ProgramHalfWord(uint32_t Address, uint16_t Data) {
     FLASH_Status status = FLASH_BAD_ADDRESS;
 
-    if (IS_FLASH_ADDRESS(Address)) {
+    if ((Address % sizeof(uint16_t) != 0 ) || !IS_FLASH_ADDRESS(Address)) {
+        return status;
+    }
+
+    /* Wait for last operation to be completed */
+    status = FLASH_WaitForLastOperation(ProgramTimeout);
+    if (status == FLASH_COMPLETE) {
+        /* if the previous operation is completed, proceed to program the new data */
+#if defined(EEPROM_EMU_STM32F401xC)
+        FLASH->CR &= ~FLASH_CR_PSIZE;
+        FLASH->CR |= FLASH_PSIZE_HFWORD;
+#endif
+        FLASH->CR |= FLASH_CR_PG;
+        *(__IO uint16_t*)Address = Data;
+
         /* Wait for last operation to be completed */
         status = FLASH_WaitForLastOperation(ProgramTimeout);
-        if (status == FLASH_COMPLETE) {
-            /* if the previous operation is completed, proceed to program the new data */
-            FLASH->CR |= FLASH_CR_PG;
-            *(__IO uint16_t*)Address = Data;
-            /* Wait for last operation to be completed */
-            status = FLASH_WaitForLastOperation(ProgramTimeout);
-            if (status != FLASH_TIMEOUT) {
-                /* if the program operation is completed, disable the PG Bit */
-                FLASH->CR &= ~FLASH_CR_PG;
-            }
-            FLASH->SR = (FLASH_SR_EOP | FLASH_SR_PGERR | FLASH_SR_WRPERR);
+        if (status != FLASH_TIMEOUT) {
+            /* if the program operation is completed, disable the PG Bit */
+            FLASH->CR &= ~FLASH_CR_PG;
         }
+        FLASH_ClearFlag(FLASH_SR_FLAGS);
     }
     return status;
 }
@@ -161,4 +212,18 @@ void FLASH_Unlock(void) {
 void FLASH_Lock(void) {
     /* Set the Lock Bit to lock the FPEC and the FCR */
     FLASH->CR |= FLASH_CR_LOCK;
+}
+
+/**
+ * @brief  Clears the FLASH's pending flags.
+ * @param  FLASH_FLAG: specifies the FLASH flags to clear.
+ *   This parameter can be any combination of the following values:
+ *     @arg FLASH_FLAG_PGERR: FLASH Programming error flag flag
+ *     @arg FLASH_FLAG_WRPERR: FLASH Write protected error flag
+ *     @arg FLASH_FLAG_EOP: FLASH End of Programming flag
+ * @retval None
+ */
+void FLASH_ClearFlag(uint32_t FLASH_FLAG) {
+    /* Clear the flags */
+    FLASH->SR |= FLASH_FLAG;
 }
