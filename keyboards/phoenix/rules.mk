@@ -18,9 +18,11 @@ BACKLIGHT_ENABLE = no       # Enable keyboard backlight functionality
 RGBLIGHT_ENABLE = no        # Enable keyboard RGB underglow
 BLUETOOTH_ENABLE = no       # Enable Bluetooth
 AUDIO_ENABLE = no           # Audio output
+MIDI_ENABLE = yes
 STENO_ENABLE = no
 SPLIT_KEYBOARD = yes
 SERIAL_DRIVER = usart
 KEYBOARD_SHARED_EP = yes
+DEBOUNCE_TYPE = sym_eager_pk
 
 OPT_DEFS += -DSTM32_DMA_REQUIRED=TRUE
