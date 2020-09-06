@@ -19,11 +19,11 @@
 #include "config_common.h"
 
 /* USB Device descriptor parameter */
-#define VENDOR_ID       0x456B
-#define PRODUCT_ID      0x0001
+#define VENDOR_ID       0x1209
+#define PRODUCT_ID      0x2304
 #define DEVICE_VER      0x0001
 #define MANUFACTURER    ErgoKB
-#define PRODUCT         Phoenix
+#define PRODUCT         Phoenix-v1
 
 /* key matrix size */
 #define MATRIX_ROWS 12
@@ -48,3 +48,9 @@
 #define SOFT_SERIAL_PIN A9
 #define SERIAL_USART_DRIVER SD1
 #define SERIAL_USART_TX_PAL_MODE 7
+
+#define SWAP_HANDS_ENABLE
+#define IGNORE_MOD_TAP_INTERRUPT
+#define PERMISSIVE_HOLD
+
+#define DEBOUNCE 30
