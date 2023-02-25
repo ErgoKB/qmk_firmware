@@ -87,7 +87,12 @@ action_t action_for_keycode(uint16_t keycode) {
             // Layer set "GOTO"
             when         = (keycode >> 0x4) & 0x3;
             action_layer = keycode & 0xF;
-            action.code  = ACTION_LAYER_SET(action_layer, when);
+            // FIXME this is a hack, we assume default layer is always 0.
+            for (int i = 1; i < MAX_LAYER; i++) {
+                layer_off(i);
+            }
+            layer_on(action_layer);
+            action.code = ACTION_NO;
             break;
         case QK_MOMENTARY ... QK_MOMENTARY_MAX:;
             // Momentary action_layer
