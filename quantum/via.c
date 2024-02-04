@@ -292,6 +292,8 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
             break;
         }
         case id_lighting_set_value: {
+            via_custom_value_command();
+            break;
 #if defined(VIA_QMK_BACKLIGHT_ENABLE)
             via_qmk_backlight_set_value(command_data);
 #endif

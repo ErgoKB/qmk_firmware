@@ -19,6 +19,7 @@
 #include "progmem.h" // to read default from flash
 #include "quantum.h" // for send_string()
 #include "dynamic_keymap.h"
+#include "send_string_keycodes.h"
 
 #ifdef VIA_ENABLE
 #    include "via.h" // for VIA_EEPROM_CONFIG_END
